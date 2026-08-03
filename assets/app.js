@@ -166,6 +166,16 @@
     if (fillEl) {
       fillEl.style.width = (grandTotal ? (done.length / grandTotal) * 100 : 0) + '%';
     }
+    // サイドバーの章ごとの進捗
+    var byPage = window.MK_WORKS || {};
+    $$('.nav-count').forEach(function (el) {
+      var ids = byPage[el.dataset.page] || [];
+      var total = ids.length;
+      var n = 0;
+      for (var i = 0; i < ids.length; i++) if (done.indexOf(ids[i]) !== -1) n++;
+      el.textContent = n + '/' + total;
+      el.classList.toggle('is-complete', total > 0 && n === total);
+    });
   }
 
   $$('.work-toggle').forEach(function (input) {
@@ -181,6 +191,34 @@
     });
   });
   refreshCounter();
+
+  /* ------------------------------------------------------------------ */
+  /* スクロールに合わせて要素を立ち上げる                                */
+  /* ------------------------------------------------------------------ */
+  var wantsMotion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (wantsMotion && 'IntersectionObserver' in window) {
+    var targets = $$('.doc-body > h2, .doc-body > .work, .doc-body > .note,'
+      + '.doc-body > .grid, .doc-body > .steps, .doc-body > .timeline,'
+      + '.doc-body > .table-wrap, .doc-body > .figure, .doc-body > .pullquote,'
+      + '.doc-body > .stats, .doc-body > .flow, .doc-body > .tree,'
+      + '.doc-body > .linkcards, .doc-body > .chcards, .doc-body > .wl-chapter');
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.02 });
+
+    targets.forEach(function (el, i) {
+      // 初期表示で見えている範囲は動かさない（読み始めを妨げないため）
+      if (el.getBoundingClientRect().top < window.innerHeight * 0.9) return;
+      el.classList.add('reveal');
+      el.style.transitionDelay = (Math.min(i % 3, 2) * 45) + 'ms';
+      io.observe(el);
+    });
+  }
 
   /* ------------------------------------------------------------------ */
   /* サイト内検索                                                        */

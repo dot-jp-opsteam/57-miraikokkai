@@ -32,18 +32,32 @@ SITE_DESC = (
     "Webで読みやすく再構成したものです。"
 )
 
-# (slug, ナビ表示名, ファイル名, セクション見出し)
-PAGES: list[tuple[str, str, str, str]] = [
-    ("index", "ホーム", "index.md", ""),
-    ("intro", "はじめに", "intro.md", "コンテストを知る"),
-    ("rules", "大会とルール", "rules.md", "コンテストを知る"),
-    ("schedule", "スケジュールと提出物", "schedule.md", "コンテストを知る"),
-    ("vision", "第1章　ビジョン", "vision.md", "テキスト本編"),
-    ("issues", "第2章　社会課題と解決", "issues.md", "テキスト本編"),
-    ("budget", "第3章　予算", "budget.md", "テキスト本編"),
-    ("presentation", "第4章　プレゼンテーション", "presentation.md", "テキスト本編"),
-    ("works", "ワーク一覧", "works.md", "資料"),
-    ("glossary", "巻末資料　用語の説明", "glossary.md", "資料"),
+# accent は章ごとのテーマ色（style.css の body[data-accent=...] に対応）。
+# 【主要】ワークのオレンジと衝突しないよう、章の色にオレンジは使わない。
+PAGES: list[dict] = [
+    dict(slug="index", nav="ホーム", file="index.md", group="", accent="brand", home=True),
+    dict(slug="intro", nav="はじめに", file="intro.md",
+         group="コンテストを知る", accent="slate"),
+    dict(slug="rules", nav="大会とルール", file="rules.md",
+         group="コンテストを知る", accent="slate"),
+    dict(slug="schedule", nav="スケジュールと提出物", file="schedule.md",
+         group="コンテストを知る", accent="slate"),
+    dict(slug="vision", nav="第1章　ビジョン", file="vision.md",
+         group="テキスト本編", accent="blue", chapter="1", chapter_title="ビジョン",
+         chapter_q="30年後、あなたが最も見たい未来はどんな景色か。"),
+    dict(slug="issues", nav="第2章　社会課題と解決", file="issues.md",
+         group="テキスト本編", accent="teal", chapter="2", chapter_title="社会課題と解決",
+         chapter_q="理想と現実の差を、どんな打ち手で埋めるのか。"),
+    dict(slug="budget", nav="第3章　予算", file="budget.md",
+         group="テキスト本編", accent="violet", chapter="3", chapter_title="予算",
+         chapter_q="限られたお金の配分に、あなたの本音はどう表れるか。"),
+    dict(slug="presentation", nav="第4章　プレゼンテーション", file="presentation.md",
+         group="テキスト本編", accent="rose", chapter="4", chapter_title="プレゼンテーション",
+         nav_short="第4章　プレゼン",
+         chapter_q="その未来を、どう語れば聞き手の心が動くのか。"),
+    dict(slug="works", nav="ワーク一覧", file="works.md", group="資料", accent="brand"),
+    dict(slug="glossary", nav="巻末資料　用語の説明", file="glossary.md",
+         group="資料", accent="slate"),
 ]
 
 # 章スラッグ → 短縮ラベル（ワーク一覧などで使う）
@@ -53,6 +67,9 @@ CHAPTER_LABEL = {
     "budget": "第3章 予算",
     "presentation": "第4章 プレゼン",
 }
+
+# 日本語の読む速さの目安（1分あたりの文字数）
+CHARS_PER_MINUTE = 520
 
 
 # --------------------------------------------------------------------------
@@ -82,17 +99,25 @@ class Page:
     slug: str
     nav_title: str
     group: str
+    nav_short: str = ""
+    home: bool = False
+    accent: str = "brand"
+    chapter: str = ""
+    chapter_title: str = ""
+    chapter_q: str = ""
     title: str = ""
     lead: str = ""
     body: str = ""
+    minutes: int = 0
     headings: list[Heading] = field(default_factory=list)
     search: list[dict] = field(default_factory=list)
 
 
 WORKS: list[Work] = []
 
-# content 側で :::worklist と書いた位置に、全ワーク一覧を差し込むための目印
+# content 側で :::worklist / :::chapters と書いた位置に差し込むための目印
 WORKLIST_TOKEN = "<!--WORKLIST-->"
+CHAPTERS_TOKEN = "<!--CHAPTERS-->"
 
 
 # --------------------------------------------------------------------------
@@ -563,6 +588,17 @@ class Parser:
             )
         return f'<div class="stats">{"".join(items)}</div>'
 
+    # -- ブロック: 引用（大きく見せる） -----------------------------------
+    def blk_quote(self, attrs: dict[str, str], inner: list[str]) -> str:
+        cite = attrs.get("cite", "")
+        text = " ".join(ln.strip() for ln in inner if ln.strip())
+        self._collect(text)
+        footer = f'<footer class="pq-cite">{inline(cite)}</footer>' if cite else ""
+        return (
+            f'<blockquote class="pullquote"><span class="pq-mark" aria-hidden="true">"</span>'
+            f'<p class="pq-text">{inline(text)}</p>{footer}</blockquote>'
+        )
+
     # -- ブロック: 全ワークの一覧（全ページのパース後に差し込む） ---------
     def blk_worklist(self, attrs: dict[str, str], inner: list[str]) -> str:
         return WORKLIST_TOKEN
@@ -571,13 +607,18 @@ class Parser:
     def blk_hero(self, attrs: dict[str, str], inner: list[str]) -> str:
         kicker = attrs.get("kicker", "")
         title = attrs.get("title", "")
+        tag = "h1" if attrs.get("h1") == "true" else "p"
         self._collect(f"{kicker} {title}")
         k = f'<p class="hero-kicker">{inline(kicker)}</p>' if kicker else ""
-        t = f'<p class="hero-title">{inline(title)}</p>' if title else ""
+        t = f'<{tag} class="hero-title">{inline(title)}</{tag}>' if title else ""
         return (
             f'<section class="hero">{k}{t}'
             f"{self.parse(inner, top=False)}</section>"
         )
+
+    # -- ブロック: 4つの章のカード（ビルド後に差し込む） ------------------
+    def blk_chapters(self, attrs: dict[str, str], inner: list[str]) -> str:
+        return CHAPTERS_TOKEN
 
     # -- ブロック: リンクカード -------------------------------------------
     def blk_linkcards(self, attrs: dict[str, str], inner: list[str]) -> str:
@@ -627,9 +668,21 @@ class Parser:
 # ページの読み込み
 # --------------------------------------------------------------------------
 
-def load_page(slug: str, nav_title: str, filename: str, group: str) -> Page:
-    src = (CONTENT / filename).read_text(encoding="utf-8")
-    page = Page(slug=slug, nav_title=nav_title, group=group)
+def load_page(cfg: dict) -> Page:
+    slug = cfg["slug"]
+    src = (CONTENT / cfg["file"]).read_text(encoding="utf-8")
+    page = Page(
+        slug=slug,
+        nav_title=cfg["nav"],
+        nav_short=cfg.get("nav_short", cfg["nav"]),
+        home=cfg.get("home", False),
+        group=cfg["group"],
+        accent=cfg.get("accent", "brand"),
+        chapter=cfg.get("chapter", ""),
+        chapter_title=cfg.get("chapter_title", ""),
+        chapter_q=cfg.get("chapter_q", ""),
+    )
+    nav_title = cfg["nav"]
 
     lines = src.split("\n")
     # 1行目の "# タイトル"、続く "> リード文" を取り出す
@@ -654,6 +707,11 @@ def load_page(slug: str, nav_title: str, filename: str, group: str) -> Page:
     page.body = parser.parse(lines[idx:])
     page.headings = parser.headings
     page.search = parser.search
+
+    # 読了時間の目安（タグを除いた本文の文字数から概算する）
+    plain = re.sub(r"<[^>]+>", "", page.body)
+    plain = re.sub(r"\s+", "", plain)
+    page.minutes = max(1, round(len(plain) / CHARS_PER_MINUTE))
     return page
 
 
@@ -676,9 +734,16 @@ def render_nav(pages: list[Page], current: str) -> str:
         for p in members:
             active = " aria-current=\"page\"" if p.slug == current else ""
             cls = "nav-link is-active" if p.slug == current else "nav-link"
+            n_works = sum(1 for w in WORKS if w.page == p.slug)
+            badge = (
+                f'<span class="nav-count" data-page="{p.slug}" data-total="{n_works}">'
+                f"0/{n_works}</span>" if n_works else ""
+            )
+            dot = f'<span class="nav-dot nav-dot--{p.accent}" aria-hidden="true"></span>'
             out.append(
                 f'<li><a class="{cls}" href="{p.slug}.html"{active}>'
-                f"{html.escape(p.nav_title)}</a>"
+                f'{dot}<span class="nav-label">{html.escape(p.nav_short)}</span>'
+                f"{badge}</a>"
             )
             if p.slug == current and p.headings:
                 out.append('<ul class="nav-sub">')
@@ -746,6 +811,13 @@ SHELL = """<!DOCTYPE html>
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 <meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- 表示をブロックしないようにフォントは後から適用する。届かない環境では端末のゴシック体になる -->
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700;900&amp;display=swap">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700;900&amp;display=swap"></noscript>
 <link rel="stylesheet" href="assets/style.css">
 <link rel="icon" href="data:image/svg+xml,{favicon}">
 <script>
@@ -757,7 +829,7 @@ SHELL = """<!DOCTYPE html>
   }})();
 </script>
 </head>
-<body data-worktotal="{worktotal}">
+<body data-worktotal="{worktotal}" data-accent="{accent}">
 <a class="skip" href="#main">本文へスキップ</a>
 <div class="progress" id="progress" aria-hidden="true"><span id="progress-bar"></span></div>
 
@@ -800,11 +872,7 @@ SHELL = """<!DOCTYPE html>
 
   <main class="main" id="main">
     <article class="doc">
-      <header class="doc-head">
-        {eyebrow}
-        <h1 class="doc-title">{h1}</h1>
-        {lead}
-      </header>
+{dochead}
       {toc}
       <div class="doc-body">
 {body}
@@ -832,6 +900,7 @@ SHELL = """<!DOCTYPE html>
 </div>
 
 <button class="totop" id="totop" aria-label="ページ先頭へ戻る" hidden></button>
+<script>window.MK_WORKS = {worksmap};</script>
 <script src="assets/app.js" defer></script>
 </body>
 </html>
@@ -845,23 +914,62 @@ FAVICON = (
 )
 
 
-def build_page(page: Page, pages: list[Page], idx: int) -> str:
+def render_meta(page: Page) -> str:
+    """読了時間・ワーク数などの小さな指標。"""
+    bits = [f'<span class="meta-item"><b>約{page.minutes}</b>分</span>']
+    works = [w for w in WORKS if w.page == page.slug]
+    if works:
+        main_n = sum(1 for w in works if w.kind == "main")
+        bits.append(f'<span class="meta-item">ワーク <b>{len(works)}</b></span>')
+        bits.append(f'<span class="meta-item meta-item--main">うち主要 <b>{main_n}</b></span>')
+    return f'<p class="doc-meta">{"".join(bits)}</p>'
+
+
+def render_dochead(page: Page) -> str:
+    """ページ冒頭。章のページは「扉」として大きく見せる。"""
+    lead = f'<p class="doc-lead">{inline(page.lead)}</p>' if page.lead else ""
+
+    if page.chapter:
+        return f"""      <header class="opener">
+        <div class="opener-num" aria-hidden="true">{html.escape(page.chapter)}</div>
+        <div class="opener-main">
+          <p class="opener-kicker">第 {html.escape(page.chapter)} 章</p>
+          <h1 class="opener-title">{inline(page.chapter_title)}</h1>
+          <p class="opener-q">{inline(page.chapter_q)}</p>
+          {lead}
+          {render_meta(page)}
+        </div>
+      </header>"""
+
+    if page.home:
+        # トップページは hero ブロック自体が h1 を持つので、見出し帯は出さない
+        return ""
+
+    eyebrow = ""
+    if page.group:
+        eyebrow = f'<p class="doc-eyebrow">{html.escape(page.group)}</p>'
+    meta = render_meta(page)
+    return f"""      <header class="doc-head">
+        {eyebrow}
+        <h1 class="doc-title">{inline(page.title)}</h1>
+        {lead}
+        {meta}
+      </header>"""
+
+
+def build_page(page: Page, pages: list[Page], idx: int, worksmap: str) -> str:
     title = SITE_TITLE if page.slug == "index" else f"{page.title}｜{SITE_TITLE}"
     desc = page.lead or SITE_DESC
-    eyebrow = ""
-    if page.group and page.slug != "index":
-        eyebrow = f'<p class="doc-eyebrow">{html.escape(page.group)}</p>'
-    lead = f'<p class="doc-lead">{inline(page.lead)}</p>' if page.lead else ""
     return SHELL.format(
         slug=page.slug,
+        accent=page.accent,
         worktotal=len(WORKS),
+        worksmap=worksmap,
         title=html.escape(title, quote=True),
         desc=html.escape(re.sub(r"<[^>]+>", "", desc)[:160], quote=True),
         favicon=FAVICON,
         nav=render_nav(pages, page.slug),
-        eyebrow=eyebrow,
-        h1=inline(page.title),
-        lead=lead,
+        dochead=render_dochead(page),
         toc=render_toc(page),
         body=page.body,
         pager=render_pager(pages, idx),
@@ -871,6 +979,26 @@ def build_page(page: Page, pages: list[Page], idx: int) -> str:
 # --------------------------------------------------------------------------
 # ワーク一覧の生成
 # --------------------------------------------------------------------------
+
+def render_chapters(pages: list[Page]) -> str:
+    """トップページに置く4つの章のカード。"""
+    cards = []
+    for p in pages:
+        if not p.chapter:
+            continue
+        works = [w for w in WORKS if w.page == p.slug]
+        main_n = sum(1 for w in works if w.kind == "main")
+        cards.append(f"""<a class="chcard chcard--{p.accent}" href="{p.slug}.html">
+  <span class="chcard-num" aria-hidden="true">{html.escape(p.chapter)}</span>
+  <span class="chcard-body">
+    <span class="chcard-kicker">第 {html.escape(p.chapter)} 章</span>
+    <span class="chcard-title">{inline(p.chapter_title)}</span>
+    <span class="chcard-q">{inline(p.chapter_q)}</span>
+    <span class="chcard-meta">約{p.minutes}分 ・ ワーク {len(works)}（主要 {main_n}）</span>
+  </span>
+</a>""")
+    return f'<div class="chcards">{"".join(cards)}</div>'
+
 
 def render_worklist() -> str:
     by_chapter: dict[str, list[Work]] = {}
@@ -912,15 +1040,17 @@ def render_worklist() -> str:
 # --------------------------------------------------------------------------
 
 def main() -> None:
-    pages = [load_page(slug, nav, fn, grp) for slug, nav, fn, grp in PAGES]
+    pages = [load_page(cfg) for cfg in PAGES]
 
     # ワーク一覧を差し込む（全ページのパース後に確定するため）
     worklist_html = render_worklist()
+    chapters_html = render_chapters(pages)
     injected = False
     for p in pages:
         if WORKLIST_TOKEN in p.body:
             p.body = p.body.replace(WORKLIST_TOKEN, worklist_html)
             injected = True
+        p.body = p.body.replace(CHAPTERS_TOKEN, chapters_html)
     if not injected:
         raise SystemExit("エラー: :::worklist ブロックがどのページにも見つかりません")
 
@@ -930,9 +1060,15 @@ def main() -> None:
     shutil.copytree(ASSETS, DIST / "assets")
     (DIST / ".nojekyll").write_text("", encoding="utf-8")
 
+    # ページ → そのページのワーク番号一覧（サイドバーの章別進捗に使う）
+    works_by_page: dict[str, list[str]] = {}
+    for w in WORKS:
+        works_by_page.setdefault(w.page, []).append(w.wid)
+    worksmap = json.dumps(works_by_page, ensure_ascii=False, separators=(",", ":"))
+
     for idx, page in enumerate(pages):
         (DIST / f"{page.slug}.html").write_text(
-            build_page(page, pages, idx), encoding="utf-8"
+            build_page(page, pages, idx, worksmap), encoding="utf-8"
         )
 
     # 検索インデックス
