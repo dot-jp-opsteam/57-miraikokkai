@@ -55,9 +55,11 @@ PAGES: list[dict] = [
          group="テキスト本編", accent="rose", chapter="4", chapter_title="プレゼンテーション",
          nav_short="第4章　プレゼン",
          chapter_q="その未来を、どう語れば聞き手の心が動くのか。"),
-    dict(slug="works", nav="ワーク一覧", file="works.md", group="資料", accent="brand"),
+    dict(slug="works", nav="ワーク一覧", file="works.md", group="資料", accent="brand", no_meta=True),
+    dict(slug="plansheet", nav="プランシートへの転記", file="plansheet.md",
+         group="資料", accent="teal", no_meta=True),
     dict(slug="glossary", nav="巻末資料　用語の説明", file="glossary.md",
-         group="資料", accent="slate"),
+         group="資料", accent="slate", no_meta=True),
 ]
 
 # 章スラッグ → 短縮ラベル（ワーク一覧などで使う）
@@ -101,6 +103,7 @@ class Page:
     group: str
     nav_short: str = ""
     home: bool = False
+    no_meta: bool = False
     accent: str = "brand"
     chapter: str = ""
     chapter_title: str = ""
@@ -118,6 +121,8 @@ WORKS: list[Work] = []
 # content 側で :::worklist / :::chapters と書いた位置に差し込むための目印
 WORKLIST_TOKEN = "<!--WORKLIST-->"
 CHAPTERS_TOKEN = "<!--CHAPTERS-->"
+PROGRESS_TOKEN = "<!--PROGRESS-->"
+PLANSHEET_TOKEN = "<!--PLANSHEET-->"
 
 
 # --------------------------------------------------------------------------
@@ -550,10 +555,84 @@ class Parser:
             parts.append(f'<li class="flow-node">{inline(nd)}</li>')
         return f'<ul class="flow">{"".join(parts)}</ul>'
 
-    # -- ブロック: ロジックツリー -----------------------------------------
+    # -- ブロック: ロジックツリー（横向きの樹形図） -----------------------
     def blk_tree(self, attrs: dict[str, str], inner: list[str]) -> str:
-        body = self.render_list([ln for ln in inner if ln.strip()])
-        return f'<div class="tree">{body}</div>'
+        """インデント付きの箇条書きを、左から右へ枝分かれする図に組む。"""
+        nodes: list[tuple[int, str]] = []
+        for ln in inner:
+            m = ULI_RE.match(ln)
+            if m:
+                nodes.append((len(m.group(1)), m.group(2).strip()))
+
+        def build(idx: int, indent: int, depth: int) -> tuple[str, int]:
+            items = []
+            while idx < len(nodes) and nodes[idx][0] >= indent:
+                cur_indent, text = nodes[idx]
+                if cur_indent > indent:      # 呼び出し側で処理済みのはず
+                    break
+                idx += 1
+                child_html = ""
+                if idx < len(nodes) and nodes[idx][0] > indent:
+                    child_html, idx = build(idx, nodes[idx][0], depth + 1)
+                self._collect(text)
+                items.append(
+                    f'<li class="htree-item">'
+                    f'<div class="htree-node htree-node--d{min(depth, 2)}">{inline(text)}</div>'
+                    f"{child_html}</li>"
+                )
+            return f'<ul class="htree-list">{"".join(items)}</ul>', idx
+
+        if not nodes:
+            return ""
+        html_out, _ = build(0, nodes[0][0], 0)
+        return f'<div class="htree" role="group">{html_out}</div>'
+
+    # -- ブロック: ロードマップ（時間軸のレーン） -------------------------
+    def blk_roadmap(self, attrs: dict[str, str], inner: list[str]) -> str:
+        """
+        ### 見出しを時点、その下の箇条書きをその時点の項目として並べる。
+        「* 」で始めた項目は強調（重点政策など）として扱う。
+        """
+        cols = self._split_by_h3(inner)
+        lanes = []
+        for when, body in cols:
+            self._collect(when)
+            chips = []
+            for ln in body:
+                m = ULI_RE.match(ln)
+                if not m:
+                    continue
+                text = m.group(2).strip()
+                strong = ln.lstrip().startswith("* ")
+                self._collect(text)
+                cls = "rm-chip rm-chip--key" if strong else "rm-chip"
+                chips.append(f'<li class="{cls}">{inline(text)}</li>')
+            lanes.append(
+                f'<li class="rm-lane"><div class="rm-when">{inline(when)}</div>'
+                f'<ul class="rm-chips">{"".join(chips)}</ul></li>'
+            )
+        return f'<div class="roadmap"><ol class="rm-lanes">{"".join(lanes)}</ol></div>'
+
+    # -- ブロック: 章末のふりかえり ---------------------------------------
+    def blk_recap(self, attrs: dict[str, str], inner: list[str]) -> str:
+        title = attrs.get("title", "この章のポイント")
+        points = []
+        for ln in inner:
+            m = ULI_RE.match(ln)
+            if not m:
+                continue
+            text = m.group(2).strip()
+            self._collect(text)
+            points.append(
+                f'<li class="recap-item">'
+                f'<span class="recap-num" aria-hidden="true"></span>'
+                f'<span class="recap-text">{inline(text)}</span></li>'
+            )
+        self._collect(title)
+        return (
+            f'<section class="recap"><p class="recap-title">{inline(title)}</p>'
+            f'<ol class="recap-list">{"".join(points)}</ol></section>'
+        )
 
     # -- ブロック: 図版プレースホルダ -------------------------------------
     def blk_figure(self, attrs: dict[str, str], inner: list[str]) -> str:
@@ -620,6 +699,14 @@ class Parser:
     def blk_chapters(self, attrs: dict[str, str], inner: list[str]) -> str:
         return CHAPTERS_TOKEN
 
+    # -- ブロック: 進捗ダッシュボード（ビルド後に差し込む） ---------------
+    def blk_progress(self, attrs: dict[str, str], inner: list[str]) -> str:
+        return PROGRESS_TOKEN
+
+    # -- ブロック: プランシート転記表（ビルド後に差し込む） ---------------
+    def blk_plansheet(self, attrs: dict[str, str], inner: list[str]) -> str:
+        return PLANSHEET_TOKEN
+
     # -- ブロック: リンクカード -------------------------------------------
     def blk_linkcards(self, attrs: dict[str, str], inner: list[str]) -> str:
         cards: list[str] = []
@@ -676,6 +763,7 @@ def load_page(cfg: dict) -> Page:
         nav_title=cfg["nav"],
         nav_short=cfg.get("nav_short", cfg["nav"]),
         home=cfg.get("home", False),
+        no_meta=cfg.get("no_meta", False),
         group=cfg["group"],
         accent=cfg.get("accent", "brand"),
         chapter=cfg.get("chapter", ""),
@@ -914,6 +1002,59 @@ FAVICON = (
 )
 
 
+# 章ごとの抽象モチーフ。currentColor を使うので章のテーマ色をそのまま拾う。
+CHAPTER_ART = {
+    # 第1章 ビジョン ── 地平線の彼方へ広がる同心の弧
+    "1": """<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" aria-hidden="true">
+  <circle cx="100" cy="150" r="30" stroke-width="1.5" opacity=".9"/>
+  <circle cx="100" cy="150" r="55" stroke-width="1.5" opacity=".65"/>
+  <circle cx="100" cy="150" r="80" stroke-width="1.5" opacity=".45"/>
+  <circle cx="100" cy="150" r="105" stroke-width="1.5" opacity=".28"/>
+  <path d="M10 150 H190" stroke-width="2"/>
+  <path d="M100 150 V38" stroke-width="2" stroke-dasharray="5 7"/>
+  <circle cx="100" cy="32" r="7" fill="currentColor" stroke="none"/>
+</svg>""",
+    # 第2章 社会課題と解決 ── 枝分かれして解へ向かうネットワーク
+    "2": """<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" aria-hidden="true">
+  <path d="M30 100 H70 M70 55 V145 M70 55 H115 M70 145 H115 M115 30 V80 M115 30 H155 M115 80 H155 M115 120 V170 M115 120 H155 M115 170 H155"
+        stroke-width="1.5" opacity=".55"/>
+  <circle cx="30" cy="100" r="9" fill="currentColor" stroke="none"/>
+  <circle cx="155" cy="30" r="5" fill="currentColor" stroke="none" opacity=".8"/>
+  <circle cx="155" cy="80" r="5" fill="currentColor" stroke="none" opacity=".8"/>
+  <circle cx="155" cy="120" r="5" fill="currentColor" stroke="none" opacity=".8"/>
+  <circle cx="155" cy="170" r="5" fill="currentColor" stroke="none" opacity=".8"/>
+</svg>""",
+    # 第3章 予算 ── 積み上げと配分
+    "3": """<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" aria-hidden="true">
+  <path d="M20 175 H180" stroke-width="2"/>
+  <rect x="34"  y="115" width="26" height="60"  stroke-width="1.5" opacity=".55"/>
+  <rect x="72"  y="70"  width="26" height="105" stroke-width="1.5" opacity=".75"/>
+  <rect x="110" y="100" width="26" height="75"  stroke-width="1.5" opacity=".55"/>
+  <rect x="148" y="40"  width="26" height="135" fill="currentColor" stroke="none" opacity=".22"/>
+  <rect x="148" y="40"  width="26" height="135" stroke-width="1.5"/>
+  <path d="M34 30 H120" stroke-width="2" stroke-dasharray="4 6" opacity=".6"/>
+</svg>""",
+    # 第4章 プレゼンテーション ── 声が広がる
+    "4": """<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" aria-hidden="true">
+  <circle cx="58" cy="100" r="14" fill="currentColor" stroke="none"/>
+  <path d="M88 70 A40 40 0 0 1 88 130"  stroke-width="2" opacity=".85"/>
+  <path d="M108 52 A62 62 0 0 1 108 148" stroke-width="2" opacity=".6"/>
+  <path d="M128 34 A84 84 0 0 1 128 166" stroke-width="2" opacity=".38"/>
+  <path d="M148 16 A106 106 0 0 1 148 184" stroke-width="2" opacity=".2"/>
+</svg>""",
+}
+
+
+def render_donut(slug: str, label: str = "") -> str:
+    """章のワーク進捗を示すドーナツ。数値は JS が入れる。"""
+    return (
+        f'<div class="donut" data-page="{slug}" role="img" aria-label="{label}進捗">'
+        f'<div class="donut-ring"><span class="donut-pct">0<i>%</i></span></div>'
+        f'<div class="donut-label"><span class="donut-done">0</span>'
+        f'<span class="donut-sep">/</span><span class="donut-total">0</span></div></div>'
+    )
+
+
 def render_meta(page: Page) -> str:
     """読了時間・ワーク数などの小さな指標。"""
     bits = [f'<span class="meta-item"><b>約{page.minutes}</b>分</span>']
@@ -930,8 +1071,11 @@ def render_dochead(page: Page) -> str:
     lead = f'<p class="doc-lead">{inline(page.lead)}</p>' if page.lead else ""
 
     if page.chapter:
+        art = CHAPTER_ART.get(page.chapter, "")
+        donut = render_donut(page.slug, f"第{page.chapter}章の")
         return f"""      <header class="opener">
         <div class="opener-num" aria-hidden="true">{html.escape(page.chapter)}</div>
+        <div class="opener-art" aria-hidden="true">{art}</div>
         <div class="opener-main">
           <p class="opener-kicker">第 {html.escape(page.chapter)} 章</p>
           <h1 class="opener-title">{inline(page.chapter_title)}</h1>
@@ -939,6 +1083,7 @@ def render_dochead(page: Page) -> str:
           {lead}
           {render_meta(page)}
         </div>
+        <div class="opener-progress">{donut}</div>
       </header>"""
 
     if page.home:
@@ -948,7 +1093,7 @@ def render_dochead(page: Page) -> str:
     eyebrow = ""
     if page.group:
         eyebrow = f'<p class="doc-eyebrow">{html.escape(page.group)}</p>'
-    meta = render_meta(page)
+    meta = "" if page.no_meta else render_meta(page)
     return f"""      <header class="doc-head">
         {eyebrow}
         <h1 class="doc-title">{inline(page.title)}</h1>
@@ -1000,6 +1145,48 @@ def render_chapters(pages: list[Page]) -> str:
     return f'<div class="chcards">{"".join(cards)}</div>'
 
 
+def render_progress(pages: list[Page]) -> str:
+    """全体＋章ごとの進捗ドーナツ。数値は JS が入れる。"""
+    rings = [
+        f'<div class="pg-cell pg-cell--total">{render_donut("__all__", "全体の")}'
+        f'<p class="pg-name">全体</p></div>'
+    ]
+    for p in pages:
+        if not p.chapter:
+            continue
+        rings.append(
+            f'<div class="pg-cell pg-cell--{p.accent}">{render_donut(p.slug, p.chapter_title)}'
+            f'<p class="pg-name"><a href="{p.slug}.html">第{p.chapter}章 {inline(p.chapter_title)}</a></p></div>'
+        )
+    return f'<div class="progress-board">{"".join(rings)}</div>'
+
+
+def render_plansheet(pages: list[Page]) -> str:
+    """「プランシートへ転記」の目印が付いたワークを、取り組む順に並べる。"""
+    order = {p.slug: i for i, p in enumerate(pages)}
+    marked = sorted(
+        (w for w in WORKS if w.plansheet),
+        key=lambda w: (order.get(w.page, 99), [int(x) for x in w.wid.split("-")]),
+    )
+    rows = []
+    for n, w in enumerate(marked, start=1):
+        chapter = CHAPTER_LABEL.get(w.page, w.page)
+        rows.append(f"""<li class="ps-step">
+  <span class="ps-n" aria-hidden="true">{n}</span>
+  <div class="ps-body">
+    <p class="ps-chapter">{html.escape(chapter)}</p>
+    <a class="ps-title" href="{w.page}.html#{w.anchor}">
+      <span class="ps-id">ワーク {html.escape(w.wid)}</span>{inline(w.title)}</a>
+  </div>
+  <label class="work-check ps-check">
+    <input type="checkbox" class="work-toggle" data-work="{html.escape(w.wid, quote=True)}"
+           aria-label="ワーク{html.escape(w.wid, quote=True)}を完了にする">
+    <span class="work-check-box" aria-hidden="true"></span>
+  </label>
+</li>""")
+    return f'<ol class="ps-steps">{"".join(rows)}</ol>'
+
+
 def render_worklist() -> str:
     by_chapter: dict[str, list[Work]] = {}
     for w in WORKS:
@@ -1043,16 +1230,21 @@ def main() -> None:
     pages = [load_page(cfg) for cfg in PAGES]
 
     # ワーク一覧を差し込む（全ページのパース後に確定するため）
-    worklist_html = render_worklist()
-    chapters_html = render_chapters(pages)
-    injected = False
+    replacements = {
+        WORKLIST_TOKEN: render_worklist(),
+        CHAPTERS_TOKEN: render_chapters(pages),
+        PROGRESS_TOKEN: render_progress(pages),
+        PLANSHEET_TOKEN: render_plansheet(pages),
+    }
+    seen = {token: False for token in replacements}
     for p in pages:
-        if WORKLIST_TOKEN in p.body:
-            p.body = p.body.replace(WORKLIST_TOKEN, worklist_html)
-            injected = True
-        p.body = p.body.replace(CHAPTERS_TOKEN, chapters_html)
-    if not injected:
-        raise SystemExit("エラー: :::worklist ブロックがどのページにも見つかりません")
+        for token, html_out in replacements.items():
+            if token in p.body:
+                p.body = p.body.replace(token, html_out)
+                seen[token] = True
+    missing = [t for t, ok in seen.items() if not ok]
+    if missing:
+        raise SystemExit(f"エラー: 差し込み先が見つかりません: {', '.join(missing)}")
 
     if DIST.exists():
         shutil.rmtree(DIST)

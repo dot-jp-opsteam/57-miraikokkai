@@ -157,6 +157,8 @@
       if (card) card.classList.toggle('is-done', checked);
       var row = input.closest('.wl-item');
       if (row) row.classList.toggle('is-done', checked);
+      var step = input.closest('.ps-step');
+      if (step) step.classList.toggle('is-done', checked);
     });
   }
 
@@ -171,11 +173,40 @@
     $$('.nav-count').forEach(function (el) {
       var ids = byPage[el.dataset.page] || [];
       var total = ids.length;
-      var n = 0;
-      for (var i = 0; i < ids.length; i++) if (done.indexOf(ids[i]) !== -1) n++;
+      var n = countDone(ids);
       el.textContent = n + '/' + total;
       el.classList.toggle('is-complete', total > 0 && n === total);
     });
+
+    // ドーナツ（章の扉・進捗ボード）
+    $$('.donut').forEach(function (el) {
+      var page = el.dataset.page;
+      var ids = page === '__all__' ? allIds() : (byPage[page] || []);
+      var total = ids.length;
+      var n = countDone(ids);
+      var pct = total ? Math.round((n / total) * 100) : 0;
+      el.style.setProperty('--p', String(pct));
+      var pctEl = $('.donut-pct', el);
+      if (pctEl) pctEl.childNodes[0].nodeValue = String(pct);
+      var doneNode = $('.donut-done', el);
+      var totalNode = $('.donut-total', el);
+      if (doneNode) doneNode.textContent = String(n);
+      if (totalNode) totalNode.textContent = String(total);
+      el.classList.toggle('is-complete', total > 0 && n === total);
+    });
+  }
+
+  function countDone(ids) {
+    var n = 0;
+    for (var i = 0; i < ids.length; i++) if (done.indexOf(ids[i]) !== -1) n++;
+    return n;
+  }
+
+  function allIds() {
+    var byPage = window.MK_WORKS || {};
+    var out = [];
+    Object.keys(byPage).forEach(function (k) { out = out.concat(byPage[k]); });
+    return out;
   }
 
   $$('.work-toggle').forEach(function (input) {
@@ -201,7 +232,9 @@
       + '.doc-body > .grid, .doc-body > .steps, .doc-body > .timeline,'
       + '.doc-body > .table-wrap, .doc-body > .figure, .doc-body > .pullquote,'
       + '.doc-body > .stats, .doc-body > .flow, .doc-body > .tree,'
-      + '.doc-body > .linkcards, .doc-body > .chcards, .doc-body > .wl-chapter');
+      + '.doc-body > .linkcards, .doc-body > .chcards, .doc-body > .wl-chapter,'
+      + '.doc-body > .roadmap, .doc-body > .htree, .doc-body > .recap,'
+      + '.doc-body > .progress-board, .doc-body > .ps-steps');
 
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {

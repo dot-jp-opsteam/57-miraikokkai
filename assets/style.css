@@ -382,15 +382,31 @@ kbd {
   background:
     radial-gradient(120% 150% at 100% 0%, var(--accent-ghost) 0%, transparent 60%),
     var(--accent-soft);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1.5rem;
 }
-.opener-num {
-  position: absolute; right: -.5rem; top: 50%; transform: translateY(-50%);
-  font-family: var(--font-num); font-weight: 800;
-  font-size: clamp(9rem, 26vw, 17rem); line-height: .8;
-  color: var(--accent); opacity: .1;
-  pointer-events: none; user-select: none;
+.opener-num { display: none; }          /* 章番号は扉のアートとキッカーで示す */
+.opener-art {
+  position: absolute; right: -2.5rem; top: 50%; transform: translateY(-50%);
+  width: clamp(11rem, 22vw, 17rem); color: var(--accent); opacity: .22;
+  pointer-events: none;
 }
-.opener-main { position: relative; }
+.opener-art svg { width: 100%; height: auto; display: block; }
+.opener-main { position: relative; grid-column: 1; }
+
+.opener-progress {
+  position: relative; grid-column: 2; justify-self: end;
+  padding: .9rem 1.1rem .8rem; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--accent-line);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.opener .donut-ring::before { background: var(--surface); }
+
+@media (max-width: 900px) {
+  .opener { grid-template-columns: minmax(0, 1fr); }
+  .opener-progress { grid-column: 1; justify-self: start; }
+  .opener-art { opacity: .12; right: -5rem; }
+}
 .opener-kicker {
   margin: 0 0 .5rem; font-family: var(--font-num); font-weight: 700;
   font-size: .8rem; letter-spacing: .3em; color: var(--accent);
@@ -771,24 +787,201 @@ blockquote:not(.pullquote) p:last-child { margin-bottom: 0; }
   .flow-arrow { align-self: center; transform: rotate(90deg); }
 }
 
-/* --- ロジックツリー ----------------------------------------------------- */
+/* --- ロジックツリー（左から右へ枝分かれ） ------------------------------- */
 
-.tree { margin: 1.75rem 0; font-size: .9rem; }
-.tree ul { list-style: none; margin: 0; padding-left: 1.5rem; }
-.tree > ul { padding-left: 0; }
-.tree li { position: relative; margin: 0; padding: .32rem 0 .32rem .4rem; }
-.tree ul ul > li::before {
-  content: ""; position: absolute; left: -1rem; top: 0; bottom: 50%;
-  width: .85rem; border-left: 1.5px solid var(--accent-line);
-  border-bottom: 1.5px solid var(--accent-line);
-  border-bottom-left-radius: .45rem;
+.htree {
+  margin: 1.75rem 0; overflow-x: auto; padding: .25rem .25rem .5rem;
+  /* 右端をぼかして「まだ続く」ことを示す */
+  -webkit-overflow-scrolling: touch;
 }
-.tree ul ul > li:not(:last-child)::after {
-  content: ""; position: absolute; left: -1rem; top: 50%; bottom: 0;
-  border-left: 1.5px solid var(--accent-line);
+.htree-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center; gap: .5rem; }
+.htree-item { display: flex; align-items: center; position: relative; }
+.htree-node {
+  flex: none; width: 12rem; padding: .55rem .7rem;
+  border-radius: .55rem; font-size: .8rem; line-height: 1.55;
+  background: var(--surface); border: 1px solid var(--accent-line);
+  box-shadow: var(--shadow-sm);
 }
-.tree > ul > li { font-weight: 700; }
-.tree ul ul li { font-weight: 400; color: var(--text-soft); }
+.htree-node--d2 { width: 10.5rem; font-size: .76rem; }
+.htree-node--d0 { font-weight: 700; background: var(--accent-soft); border-color: var(--accent); }
+.htree-node--d1 { font-weight: 700; }
+.htree-node--d2 { color: var(--text-soft); border-color: var(--border); }
+
+/* 親から子へ伸びる接続線 */
+.htree-item > .htree-list { position: relative; margin-left: 1.7rem; }
+.htree-item > .htree-list::before {
+  content: ""; position: absolute; left: -.85rem; top: 0; bottom: 0;
+  width: 1.5px; background: var(--accent-line);
+}
+.htree-item > .htree-list > .htree-item::before {
+  content: ""; position: absolute; left: -.85rem; top: 50%;
+  width: .85rem; height: 1.5px; background: var(--accent-line);
+}
+.htree-item > .htree-node { position: relative; }
+.htree-item > .htree-node::after {
+  content: ""; position: absolute; right: -.85rem; top: 50%;
+  width: .85rem; height: 1.5px; background: var(--accent-line);
+}
+.htree-item > .htree-node:last-child::after { display: none; }
+
+@media (max-width: 700px) {
+  .htree-item { align-items: flex-start; flex-direction: column; }
+  .htree-node { max-width: none; width: 100%; }
+  .htree-item > .htree-list { margin: .45rem 0 0 1.1rem; }
+  .htree-item > .htree-node::after { display: none; }
+  .htree-item > .htree-list::before { left: -.6rem; }
+  .htree-item > .htree-list > .htree-item::before { left: -.6rem; top: 1.1rem; width: .6rem; }
+}
+
+/* --- ロードマップ ------------------------------------------------------- */
+
+.roadmap {
+  margin: 1.75rem 0; padding: 1.25rem 1.15rem 1rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); overflow-x: auto;
+}
+.rm-lanes {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(10rem, 1fr);
+  gap: 0; min-width: 40rem;
+}
+.rm-lane { position: relative; padding: 2.1rem .6rem 0; }
+.rm-lane::before {                       /* 時間軸 */
+  content: ""; position: absolute; left: 0; right: 0; top: 1.35rem;
+  height: 2px; background: var(--accent-line);
+}
+.rm-lane:first-child::before { left: 50%; border-radius: 2px 0 0 2px; }
+.rm-lane:last-child::before  { right: 50%; border-radius: 0 2px 2px 0; }
+.rm-lane::after {                        /* 目盛り */
+  content: ""; position: absolute; left: calc(50% - .3rem); top: 1.05rem;
+  width: .65rem; height: .65rem; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--surface-2);
+}
+.rm-when {
+  position: absolute; top: 0; left: 0; right: 0; text-align: center;
+  font-family: var(--font-num); font-size: .78rem; font-weight: 700;
+  letter-spacing: .06em; color: var(--accent);
+}
+.rm-chips { list-style: none; margin: .55rem 0 0; padding: 0; display: grid; gap: .35rem; }
+.rm-chip {
+  padding: .4rem .6rem; border-radius: .45rem; font-size: .78rem; line-height: 1.5;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-soft);
+}
+.rm-chip--key {
+  background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); font-weight: 700;
+}
+
+/* --- 章末のふりかえり --------------------------------------------------- */
+
+.recap {
+  margin: 3rem 0 0; padding: 1.5rem 1.5rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--accent-line);
+  background:
+    radial-gradient(100% 140% at 0% 0%, var(--accent-ghost) 0%, transparent 55%),
+    var(--surface);
+}
+.recap-title {
+  margin: 0 0 .9rem; font-size: .78rem; font-weight: 700;
+  letter-spacing: .2em; color: var(--accent);
+}
+.recap-list { list-style: none; margin: 0; padding: 0; counter-reset: recap; display: grid; gap: .8rem; }
+.recap-item { display: flex; gap: .8rem; align-items: flex-start; counter-increment: recap; }
+.recap-num {
+  flex: none; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff;
+  font-family: var(--font-num); font-size: .75rem; font-weight: 700; line-height: 1;
+  margin-top: .25rem;
+}
+.recap-num::before { content: counter(recap); }
+.recap-text { flex: 1 1 auto; min-width: 0; font-size: .95rem; line-height: 1.85; }
+
+/* --- 進捗ドーナツ ------------------------------------------------------- */
+
+.donut { display: grid; justify-items: center; gap: .35rem; --p: 0; }
+.donut-ring {
+  width: 4.25rem; height: 4.25rem; border-radius: 50%;
+  display: grid; place-items: center; position: relative;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1%),
+                             color-mix(in srgb, var(--accent) 20%, var(--border)) 0);
+  transition: background .4s cubic-bezier(.22, .8, .3, 1);
+}
+.donut-ring::before {
+  content: ""; position: absolute; inset: .45rem; border-radius: 50%;
+  background: var(--surface);
+}
+.donut-pct {
+  position: relative; font-family: var(--font-num); font-weight: 700;
+  font-size: 1.02rem; line-height: 1; color: var(--accent);
+}
+.donut-pct i { font-style: normal; font-size: .6em; margin-left: .05em; }
+.donut-label { font-family: var(--font-num); font-size: .74rem; color: var(--text-muted); }
+.donut-sep { margin: 0 .15em; }
+
+.opener-progress { position: relative; }
+.opener .donut-ring::before { background: var(--accent-soft); }
+
+.progress-board {
+  display: grid; gap: 1rem; margin: 1.75rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  padding: 1.5rem 1rem; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--surface-2);
+}
+.pg-cell { display: grid; justify-items: center; gap: .5rem; }
+.pg-cell--total .donut-ring { width: 5.25rem; height: 5.25rem; }
+.pg-cell--total .donut-pct { font-size: 1.2rem; }
+.pg-cell--blue   { --accent: #3457c4; }
+.pg-cell--teal   { --accent: #0d7462; }
+.pg-cell--violet { --accent: #6845a6; }
+.pg-cell--rose   { --accent: #bb3167; }
+:root[data-theme="dark"] .pg-cell--blue   { --accent: #8fa8f2; }
+:root[data-theme="dark"] .pg-cell--teal   { --accent: #52c6ad; }
+:root[data-theme="dark"] .pg-cell--violet { --accent: #b79cf0; }
+:root[data-theme="dark"] .pg-cell--rose   { --accent: #f188b0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pg-cell--blue   { --accent: #8fa8f2; }
+  :root:not([data-theme="light"]) .pg-cell--teal   { --accent: #52c6ad; }
+  :root:not([data-theme="light"]) .pg-cell--violet { --accent: #b79cf0; }
+  :root:not([data-theme="light"]) .pg-cell--rose   { --accent: #f188b0; }
+}
+.pg-cell .donut-ring::before { background: var(--surface-2); }
+.pg-name { margin: 0; font-size: .78rem; text-align: center; line-height: 1.5; color: var(--text-soft); }
+.pg-name a { color: inherit; text-decoration: none; }
+.pg-name a:hover { color: var(--accent); }
+
+/* --- プランシート転記 --------------------------------------------------- */
+
+.ps-steps { list-style: none; margin: 1.75rem 0; padding: 0; }
+.ps-step {
+  display: flex; align-items: center; gap: .95rem; position: relative;
+  padding: .9rem .25rem;
+}
+.ps-step:not(:last-child)::before {
+  content: ""; position: absolute; left: 1.05rem; top: 2.6rem; bottom: -.4rem;
+  width: 2px; background: linear-gradient(var(--accent-line), var(--border));
+}
+.ps-n {
+  flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%;
+  display: grid; place-items: center; position: relative; z-index: 1;
+  background: var(--accent); color: #fff;
+  font-family: var(--font-num); font-size: .88rem; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 4px var(--bg);
+}
+.ps-body { flex: 1 1 auto; min-width: 0; }
+.ps-chapter { margin: 0 0 .1rem; font-size: .7rem; letter-spacing: .1em; color: var(--text-muted); }
+.ps-title { display: block; color: var(--text); text-decoration: none; font-weight: 700; line-height: 1.6; }
+.ps-title:hover { color: var(--accent); opacity: 1; }
+.ps-id {
+  display: inline-block; margin-right: .55rem;
+  font-family: var(--font-num); font-size: .72rem; font-weight: 700;
+  color: var(--accent-work); background: var(--work-soft);
+  border: 1px solid var(--work-line); border-radius: .3rem; padding: .05rem .4rem;
+  vertical-align: .1em;
+}
+.ps-check { flex: none; }
+.ps-step.is-done .ps-title { color: var(--text-muted); text-decoration: line-through; }
 
 /* --- 図版・出典 --------------------------------------------------------- */
 
