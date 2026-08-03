@@ -35,8 +35,11 @@ jobs:
       - name: 出力を検証
         run: python3 check.py
 
-      - name: Pages の設定を取得
+      - name: Pages を有効化して設定を取得
         uses: actions/configure-pages@v5
+        with:
+          # まだ Pages が有効化されていないリポジトリでも、ここで有効化する
+          enablement: true
 
       - name: 成果物をアップロード
         uses: actions/upload-pages-artifact@v3
