@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - claude/future-diet-textbook-html-5n7n8z
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に複数のデプロイが走らないようにする（進行中のものは完走させる）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Python をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: サイトをビルド
+        run: python3 build.py
+
+      - name: 出力を検証
+        run: python3 check.py
+
+      - name: Pages の設定を取得
+        uses: actions/configure-pages@v5
+
+      - name: 成果物をアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: GitHub Pages へデプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4

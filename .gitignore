@@ -1,0 +1,14 @@
+# ビルド成果物（GitHub Actions が生成する）
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
