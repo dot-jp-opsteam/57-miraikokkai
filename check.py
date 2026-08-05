@@ -63,12 +63,13 @@ class TagBalance(HTMLParser):
 
 
 class Refs(HTMLParser):
-    """id 属性とリンク先を集める。"""
+    """id 属性・リンク先・読み込むファイルを集める。"""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.ids: set[str] = set()
         self.links: list[str] = []
+        self.assets: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         d = dict(attrs)
@@ -76,6 +77,11 @@ class Refs(HTMLParser):
             self.ids.add(d["id"])
         if tag == "a" and d.get("href"):
             self.links.append(d["href"])
+        # favicon・CSS・JS などの参照先が実在するか確かめる
+        if tag == "link" and d.get("href"):
+            self.assets.append(d["href"])
+        if tag in ("script", "img", "source") and d.get("src"):
+            self.assets.append(d["src"])
 
 
 def main() -> int:
@@ -105,6 +111,12 @@ def main() -> int:
         refs.feed(src)
         ids[name] = refs.ids
         links[name] = refs.links
+
+        for asset in refs.assets:
+            if asset.startswith(("http://", "https://", "data:", "//")):
+                continue
+            if not (DIST / asset.split("?")[0]).exists():
+                problems.append(f"{name}: 参照先のファイルがありません → {asset}")
 
     external = ("http://", "https://", "mailto:", "tel:", "data:")
     for name, hrefs in links.items():

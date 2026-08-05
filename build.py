@@ -907,7 +907,10 @@ SHELL = """<!DOCTYPE html>
 <noscript><link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700;900&amp;display=swap"></noscript>
 <link rel="stylesheet" href="assets/style.css">
-<link rel="icon" href="data:image/svg+xml,{favicon}">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/favicon-180.png">
+<meta name="theme-color" content="#d0501c">
 <script>
   (function () {{
     try {{
@@ -993,14 +996,6 @@ SHELL = """<!DOCTYPE html>
 </body>
 </html>
 """
-
-FAVICON = (
-    "%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E"
-    "%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%23E8622C'/%3E"
-    "%3Ctext%20x='32'%20y='45'%20font-size='38'%20text-anchor='middle'%20"
-    "fill='white'%20font-family='sans-serif'%3E%E6%9C%AA%3C/text%3E%3C/svg%3E"
-)
-
 
 # 章ごとの抽象モチーフ。currentColor を使うので章のテーマ色をそのまま拾う。
 CHAPTER_ART = {
@@ -1112,7 +1107,6 @@ def build_page(page: Page, pages: list[Page], idx: int, worksmap: str) -> str:
         worksmap=worksmap,
         title=html.escape(title, quote=True),
         desc=html.escape(re.sub(r"<[^>]+>", "", desc)[:160], quote=True),
-        favicon=FAVICON,
         nav=render_nav(pages, page.slug),
         dochead=render_dochead(page),
         toc=render_toc(page),

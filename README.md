@@ -28,11 +28,21 @@ NPO法人ドットジェイピー「未来国会2026」の国家デザイン テ
 
 ```
 content/        本文（Markdown）。編集するのは基本ここだけ
-assets/         style.css / app.js
+assets/         style.css / app.js / favicon
 build.py        content/ → dist/ を生成する静的サイトジェネレータ
-check.py        出力された HTML の検証（リンク切れ・タグ崩れ）
+check.py        出力された HTML の検証（リンク切れ・タグ崩れ・参照ファイルの実在）
 dist/           ビルド成果物（Git 管理外）
 ```
+
+### ファビコン
+
+`assets/favicon.svg` が正本で、「未来／国会」を2行に組んだオレンジのタイルです。
+`favicon-32.png` と `favicon-180.png`（Apple のホーム画面用）は、この SVG を
+ブラウザで描画して書き出したものです。**SVG を直すと PNG は古いままになる**ので、
+デザインを変えたときは両方を作り直してください。
+
+PNG は SVG をブラウザで表示してスクリーンショットを撮れば作れます。グリフが
+ピクセルになるため、日本語フォントの無い環境でも崩れません。
 
 ## 編集して公開するまで
 
